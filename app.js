@@ -118,7 +118,7 @@ function sendPost(api, postObj, auth = {}){
 
 function getRequestPromise(api, path, options = {}){
   return new Promise((resolve, reject) => {
-    resolve( getRequest(api, path, options) );
+    return getRequest(api, path, options);
   });
 }
 
@@ -147,10 +147,50 @@ function getRequest(api, path, options = {}, accum = []){
       return getRequest(api, path, Object.assign(options, {page: page + 1}), accum);
     } else {
       console.log(`resolving with ${accum.length} items`);
-      return accum;
+      return resolve(accum);
     }
   });
 
+}
+
+/*
+
+  I promise to return n items
+  collection = []
+  get 100 items
+  add 100 items to collection
+  if collection.length > n resolve collection
+
+
+
+
+*/
+
+function getReq(api, path, options = {}, accum = []){
+  return new Promise((resolve, reject) => {
+
+    let optstr = '?';
+    optstr += querystring.stringify(options);
+
+    request(`${api}${path}${optstr}`, (err, res, body) => {
+      
+      body = JSON.parse(body);
+      accum = accum.concat(body);
+
+      if(accum.length >= options.count){
+        console.log('I have enough items to resolve my promise');
+        resolve(accum);
+      } else {
+        console.log(`need more stuff, only have ${accum.length} items`);
+        getReq(api, path, Object.assign(options, {page: options.page + 1}), accum)
+        .then(accum => resolve(accum));
+      }
+      //console.log('need more items');
+      
+      
+    });
+      
+  });
 }
 
 app.use(bodyParser.json()); // support json encoded bodies
@@ -158,13 +198,11 @@ app.use(bodyParser.json()); // support json encoded bodies
 app.post('/source/cats', (req, res) => {
 
   let { source, target, count, section } = req.body;
-  target = config[req.body.target]; // dev
   source = config[req.body.source]; // prod
 
-  return getRequestPromise(source.api, '/wp/v2/categories', {count: 90, page: 1})
+  getReq(source.api, '/wp/v2/categories', {count: 30, page: 1, per_page: 10})
   .then(cats => {
-    console.log('bob', cats);
-    res.send(`fetched some categories`)
+    res.send(`fetched ${cats.length} categories`)
   });
 
 });
