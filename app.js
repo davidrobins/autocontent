@@ -27,9 +27,9 @@ const config = {
 
 function getCategories(api){
   return new Promise((resolve, reject ) => {
-    getRequest(api, '/wp/v2/categories', { count: 180, page: 1 })
+    getReq(api, '/wp/v2/categories', { count: 180, page: 1 })
     .then(cats => { 
-      console.log(`getCategories fetched ${cats.length} cats`);
+      //console.log(`getCategories fetched ${cats.length} cats from ${api}`);
       resolve(cats)
     })
   });
@@ -39,8 +39,12 @@ function getCategoryId(api, slug){
   return new Promise((resolve, reject) => {
     getCategories(api)
     .then(cats => {
-      console.log('getCategoryId got cats', cats.length);
-      cats.map(cat => { if (cat.slug === slug) resolve(cat) });
+      cats.map(cat => {
+        if (cat.slug === slug) {
+          //console.log(`getCategoryId got catid ${cat.id} for slug '${cat.slug}' from api ${api}`);
+          resolve(cat)
+        }
+      });
     });
   });
 }
@@ -49,22 +53,30 @@ function getCategorySlug(api, id){
   return new Promise((resolve, reject) => {
     getCategories(api)
     .then(cats => cats.map(cat => {
-      if (cat.id === id) resolve(cat);
+      if (cat.id === id) {
+        //console.log(`getCategorySlug got slug ${cat.slug} for slug '${cat.id}' from api ${api}`);
+        resolve(cat);
+      }
     }));
   });
 }
 
 function getPostsFromCat(api, namespace, count, catid){
   return new Promise((resolve, reject ) => {
-    getRequest(api, `/${namespace}/v1/posts/lite`, { categories: catid, count: count })
-    .then(posts => { resolve(posts) } )
+    getReq(api, `/${namespace}/v1/posts/lite`, { categories: catid, count: count })
+    .then(posts => { 
+      //console.log(`getPostsFromCat got ${posts.length} posts for catid ${catid} from api ${api}`);      
+      resolve(posts);
+    } )
   });
 }
 
 function getPost(api, postid){
   return new Promise((resolve, reject) => {
-    getRequest(api, `/wp/v2/posts/${postid}`)
-    .then(post => { resolve(post[0]) })
+    getReq(api, `/wp/v2/posts/${postid}`)
+    .then(post => {
+      resolve(post)
+    })
   });
 }
 
@@ -85,6 +97,7 @@ function createCategory(api, catObj){
     }
 
     request(reqOptions, (err, res, body) => {
+      console.log('create category body', body);
       if(err) console.log(err)
       if(res.statusCode == 201) resolve(body.id);
       if(res.statusCode == 500 && body.code == 'term_exists') resolve(body.data);
@@ -116,78 +129,39 @@ function sendPost(api, postObj, auth = {}){
   
 }
 
-function getRequestPromise(api, path, options = {}){
-  return new Promise((resolve, reject) => {
-    return getRequest(api, path, options);
-  });
-}
-
-function getRequest(api, path, options = {}, accum = []){
-
-  console.log(`requesting path ${api}${path}`);
-  console.log('request options', options);
-
-  const { count, page } = options;
-  
-  if(options.count){
-    options = Object.assign({ page: 1 }, options );
-    options.per_page = options.count < 100 ? options.count : 100;
-    // delete options.count
-  }
-
-  let optstr = '?';
-  optstr += querystring.stringify(options);
-  
-  request(`${api}${path}${optstr}`, (err, res, body) => {
-    if(err) console.log(err);
-    body = JSON.parse(body);
-    accum = accum.concat(body);
-    if(accum.length < count && body.length == options.per_page){
-      console.log('recursing for more data');
-      return getRequest(api, path, Object.assign(options, {page: page + 1}), accum);
-    } else {
-      console.log(`resolving with ${accum.length} items`);
-      return resolve(accum);
-    }
-  });
-
-}
-
-/*
-
-  I promise to return n items
-  collection = []
-  get 100 items
-  add 100 items to collection
-  if collection.length > n resolve collection
-
-
-
-
-*/
-
 function getReq(api, path, options = {}, accum = []){
   return new Promise((resolve, reject) => {
+  
+    const { count, page } = options;
+    
+    if(options.count){
+      options = Object.assign({ page: 1 }, options );
+      options.per_page = options.count < 100 ? options.count : 100;
+      // delete options.count
+    }
+  
+    let optstr = '';
+    optstr += '?' + querystring.stringify(options);
 
-    let optstr = '?';
-    optstr += querystring.stringify(options);
+    //console.log(`making request for ${api}${path}${optstr}`);
 
     request(`${api}${path}${optstr}`, (err, res, body) => {
       
-      body = JSON.parse(body);
-      accum = accum.concat(body);
+      if(options.count){
+        
+        body = JSON.parse(body);
+        accum = accum.concat(body);
 
-      if(accum.length >= options.count){
-        console.log('I have enough items to resolve my promise');
-        resolve(accum);
+        if(accum.length >= options.count || body.length < options.per_page){
+          resolve(accum);
+        } else {
+          getReq(api, path, Object.assign(options, {page: options.page + 1}), accum)
+          .then(accum => resolve(accum));
+        }
+
       } else {
-        console.log(`need more stuff, only have ${accum.length} items`);
-        getReq(api, path, Object.assign(options, {page: options.page + 1}), accum)
-        .then(accum => resolve(accum));
+        resolve(JSON.parse(body));
       }
-      //console.log('need more items');
-      
-      
     });
       
   });
@@ -200,7 +174,7 @@ app.post('/source/cats', (req, res) => {
   let { source, target, count, section } = req.body;
   source = config[req.body.source]; // prod
 
-  getReq(source.api, '/wp/v2/categories', {count: 30, page: 1, per_page: 10})
+  getReq(source.api, '/wp/v2/categories', {count: 45, page: 1, per_page: 10})
   .then(cats => {
     res.send(`fetched ${cats.length} categories`)
   });
@@ -213,7 +187,7 @@ app.post('/source/catid', (req, res) => {
   target = config[req.body.target]; // dev
   source = config[req.body.source]; // prod
 
-  getCategoryId(source.api, section).then(catid => { res.send(`fetched category id ${catid}`) });
+  getCategoryId(source.api, section).then(cat => { res.json(cat.id) });
 
 });
 
@@ -255,32 +229,23 @@ app.post('/', (req, res) => {
  
     let postsArr = new Promise((resolve, reject) => {
       getCategoryId(source.api, section)
-      .then(cat => { getPostsFromCat(source.api, source.namespace, count, cat.id) })
+      .then(cat => { return getPostsFromCat(source.api, source.namespace, count, cat.id) })
       .then(posts => resolve(posts));
     });
       
     Promise.all([targetCats, sourceCats, postsArr])
     .then( ([targetCats, sourceCats, postsArr]) => {
-
-      console.log(`Successfully fetched ${sourceCats.length} cats`);
       
       postsArr.forEach(p => {
-
-        console.log('going to fetch full object for ', p.id, 'from ', source.api);
 
         getPost(source.api, p.id)
         .then(P => {
 
           let newCatPromises = [], tCats = [];
 
-          console.log('P categories:', P.categories);
-
           P.categories.forEach(cat => {
-            console.log('P category is:', cat);
             let sCat = sourceCats.find(sC => { return(cat == sC.id) }) // must always succeed
-            console.log(`${P.title} sCat:`, sCat);
             let tCat = targetCats.find(tC => { return(sCat.slug == tC.slug) }) // may fail if not present in target categories
-            console.log('tCat:', tCat);
             if(tCat){
               tCats.push(tCat)
             } else {
@@ -293,8 +258,8 @@ app.post('/', (req, res) => {
             newCats.forEach(nC => tCats.push(nC.id));
 
             P.categories = tCats;
-            // sendPost(target.api, P);
-            console.log(P.title);
+            sendPost(target.api, P);
+            console.log('Aaaaaand finally:', P.title);
           })
 
         })
