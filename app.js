@@ -11,13 +11,22 @@ const fs = require('fs');
 
 const config = {
   dev: {
-    api: 'http://helios-cache.development.apps.poc-cluster.ngn-dev.ntch.co.uk/www-dev.uat-thescottishsun.co.uk/wp-json',
-    namespace: 'thescottishsun',
+    api: 'https://www-dev.uat-thesun.co.uk/wp-json',
+    namespace: 'thesun',
     oauthUrl: 'https://www-dev.uat-thesun.co.uk/wp-json',
     clientKey: 'TRrJxAlRtoON',
     clientSecret: '1fEOgJIPOPXV2crtm5Djw4OMeOadWP57Ox0J0jwTwZcW3ErR',
     accessToken: 'XD0ubal7i33SfbsYKnoteGm4',
     accessTokenSecret: 'FMLLIbgrQMe349gK1tAxookLMBH3kxziO0PnTjdS8om7nA8j',
+  },
+  scotdev: {
+    api: 'https://www-dev.uat-thescottishsun.co.uk/wp-json',
+    namespace: 'thescottishsun',
+    oauthUrl: 'https://www-dev.uat-thescottishsun.co.uk/wp-json',
+    clientKey: '3SUKD5Vjue8s',
+    clientSecret: 'CPP7HoXQZ4AY8C4g0VPq1onjYYV8kgeaUniSuTHQVI6DHFYl',
+    accessToken: 'GczW3u1ObaacH1Gr7xuaAKPO',
+    accessTokenSecret: 'I8kngIzsP3nBWnU5u5mqB94MYGtaOUqXbhqCW9UGJmF0P6VA',
   },
   prod: {
     api: 'http://helios-production-api-cache.miki4tesma.eu-west-1.elasticbeanstalk.com/wp-json',
@@ -80,8 +89,13 @@ function getPost(api, postid){
   });
 }
 
-function createCategory(api, catObj){
+function createCategory(api, catObj, auth = {}){
+
   return new Promise((resolve, reject) => {
+
+    const { oauth, oauthToken } = auth;
+
+    console.log('oauth', oauth);
 
     let requestData = {
       url: `${api}/wp/v2/categories`,
@@ -92,10 +106,12 @@ function createCategory(api, catObj){
     const reqOptions = {
       url: requestData.url,
       method: requestData.method,
-      data: requestData.data,
+      form: requestData.data,
       headers: oauth.toHeader(oauth.authorize(requestData, oauthToken))
     }
 
+    console.log('req options', reqOptions);
+    
     request(reqOptions, (err, res, body) => {
       console.log('create category body', body);
       if(err) console.log(err)
@@ -108,6 +124,8 @@ function createCategory(api, catObj){
 }
 
 function sendPost(api, postObj, auth = {}){
+
+  const { oauth, oauthToken } = auth;
 
   let requestData = {
     url: `${api}/wp/v2/posts`,
@@ -122,9 +140,12 @@ function sendPost(api, postObj, auth = {}){
     headers: oauth.toHeader(oauth.authorize(requestData, oauthToken))
   }
 
+  console.log('req options', reqOptions);
+
   request(reqOptions, (err, res, body) => {
+    console.log('body', body);
     if(err) console.log(err)
-    if(res.statusCode == 200) { console.log(`Post ${postObj.title} was successfully sent`) } else { console.log(`Oops, that didn\'t go to plan... ${postObj.title} upload failed`) };
+    if(res.statusCode == 200) { console.log(`Post ${postObj.title} was successfully sent`) } else { console.log(`Oops, that didn\'t go to plan... ${postObj.title.rendered} upload failed`) };
   });
   
 }
@@ -169,25 +190,30 @@ function getReq(api, path, options = {}, accum = []){
 
 app.use(bodyParser.json()); // support json encoded bodies
 
-app.post('/source/cats', (req, res) => {
+app.post('/createcat', (req, res) => {
 
   let { source, target, count, section } = req.body;
-  source = config[req.body.source]; // prod
+  
+    target = config[req.body.target]; // dev
+    source = config[req.body.source]; // prod
+  
+    const pkg = { name: req.body.name };
+  
+    const oauth = Oauth({
+      consumer: {
+        key: target.clientKey,
+        secret: target.clientSecret,
+      },
+      signature_method: 'HMAC-SHA1',
+      hash_function: (baseString, key) => { return crypto.createHmac('sha1', key).update(baseString).digest('base64') },
+    });
+    
+    const oauthToken = {		
+      key: target.accessToken,		
+      secret: target.accessTokenSecret,		
+    };
 
-  getReq(source.api, '/wp/v2/categories', {count: 45, page: 1, per_page: 10})
-  .then(cats => {
-    res.send(`fetched ${cats.length} categories`)
-  });
-
-});
-
-app.post('/source/catid', (req, res) => {
-
-  let { source, target, count, section } = req.body;
-  target = config[req.body.target]; // dev
-  source = config[req.body.source]; // prod
-
-  getCategoryId(source.api, section).then(cat => { res.json(cat.id) });
+  createCategory(target.api, pkg, {oauth, oauthToken});
 
 });
 
@@ -208,13 +234,12 @@ app.post('/', (req, res) => {
 
 
   const oauth = Oauth({
-    baseUrl: target.api,
     consumer: {
       key: target.clientKey,
       secret: target.clientSecret,
     },
     signature_method: 'HMAC-SHA1',
-    hash_function: (baseString, key) => crypto.createHmac('sha1', key).update(baseString).digest('base64'),
+    hash_function: (baseString, key) => { return crypto.createHmac('sha1', key).update(baseString).digest('base64') },
   });
   
   const oauthToken = {		
@@ -258,7 +283,7 @@ app.post('/', (req, res) => {
             newCats.forEach(nC => tCats.push(nC.id));
 
             P.categories = tCats;
-            sendPost(target.api, P);
+            sendPost(target.api, P, {oauth, oauthToken});
             console.log('Aaaaaand finally:', P.title);
           })
 
@@ -274,24 +299,3 @@ app.post('/', (req, res) => {
 app.listen(8001, () => {
   console.log('listening on port 8001')
 });
-
-
-/*
-sync categories between instances?
-get n articles for a section
-for each, get a full post for post id
-push into target api
-*/
-
-/*
-
-full post has array of category ids
-get the category slugs from sourceCats
-get the category items from targetCats using slug
-get the cat ids from each category item
-
-if category doesn't exist in target cats, make it and push to target api
-
-sending a create category request to the API for a cat that already exists, returns the existing category id.
-
-*/
