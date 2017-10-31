@@ -13,7 +13,6 @@ const config = {
   dev: {
     api: 'https://www-dev.uat-thesun.co.uk/wp-json',
     namespace: 'thesun',
-    oauthUrl: 'https://www-dev.uat-thesun.co.uk/wp-json',
     clientKey: 'TRrJxAlRtoON',
     clientSecret: '1fEOgJIPOPXV2crtm5Djw4OMeOadWP57Ox0J0jwTwZcW3ErR',
     accessToken: 'XD0ubal7i33SfbsYKnoteGm4',
@@ -22,7 +21,6 @@ const config = {
   scotdev: {
     api: 'https://www-dev.uat-thescottishsun.co.uk/wp-json',
     namespace: 'thescottishsun',
-    oauthUrl: 'https://www-dev.uat-thescottishsun.co.uk/wp-json',
     clientKey: '3SUKD5Vjue8s',
     clientSecret: 'CPP7HoXQZ4AY8C4g0VPq1onjYYV8kgeaUniSuTHQVI6DHFYl',
     accessToken: 'GczW3u1ObaacH1Gr7xuaAKPO',
@@ -38,8 +36,9 @@ function getCategories(api){
   return new Promise((resolve, reject ) => {
     getReq(api, '/wp/v2/categories', { count: 180, page: 1 })
     .then(cats => { 
-      //console.log(`getCategories fetched ${cats.length} cats from ${api}`);
-      resolve(cats)
+      console.log(`getCategories fetched ${cats.length} cats from ${api}`);
+      cats.forEach(cat => console.log(cat.slug));
+      resolve(cats);
     })
   });
 }
@@ -50,7 +49,7 @@ function getCategoryId(api, slug){
     .then(cats => {
       cats.map(cat => {
         if (cat.slug === slug) {
-          //console.log(`getCategoryId got catid ${cat.id} for slug '${cat.slug}' from api ${api}`);
+          console.log(`getCategoryId got catid ${cat.id} for slug '${cat.slug}' from api ${api}`);
           resolve(cat)
         }
       });
@@ -63,7 +62,7 @@ function getCategorySlug(api, id){
     getCategories(api)
     .then(cats => cats.map(cat => {
       if (cat.id === id) {
-        //console.log(`getCategorySlug got slug ${cat.slug} for slug '${cat.id}' from api ${api}`);
+        console.log(`getCategorySlug got slug ${cat.slug} for slug '${cat.id}' from api ${api}`);
         resolve(cat);
       }
     }));
@@ -74,7 +73,7 @@ function getPostsFromCat(api, namespace, count, catid){
   return new Promise((resolve, reject ) => {
     getReq(api, `/${namespace}/v1/posts/lite`, { categories: catid, count: count })
     .then(posts => { 
-      //console.log(`getPostsFromCat got ${posts.length} posts for catid ${catid} from api ${api}`);      
+      console.log(`getPostsFromCat got ${posts.length} posts for catid ${catid} from api ${api}`);      
       resolve(posts);
     } )
   });
@@ -95,8 +94,6 @@ function createCategory(api, catObj, auth = {}){
 
     const { oauth, oauthToken } = auth;
 
-    console.log('oauth', oauth);
-
     let requestData = {
       url: `${api}/wp/v2/categories`,
       method: 'POST',
@@ -106,48 +103,95 @@ function createCategory(api, catObj, auth = {}){
     const reqOptions = {
       url: requestData.url,
       method: requestData.method,
-      form: requestData.data,
-      headers: oauth.toHeader(oauth.authorize(requestData, oauthToken))
+      body: requestData.data,
+      headers: oauth.toHeader(oauth.authorize(requestData, oauthToken)),
+      json: true
     }
-
-    console.log('req options', reqOptions);
     
     request(reqOptions, (err, res, body) => {
       console.log('create category body', body);
       if(err) console.log(err)
       if(res.statusCode == 201) resolve(body.id);
       if(res.statusCode == 500 && body.code == 'term_exists') resolve(body.data);
+      res.send(res.body);
     });
 
   })
 
 }
 
+function prepPost(postObj){
+
+  const allowed = [
+    'title',
+    'content',
+    'excerpt',
+    'date',
+    'date_gmt',
+    'slug',
+    'status',
+    'password',
+    'author',
+    'featured_media',
+    'comment_status',
+    'ping_status',
+    'format',
+    'meta',
+    'sticky',
+    'template',
+    'categories',
+    'tags',
+    'liveblog_likes',
+  ];
+
+  let preppedPost = {};
+
+  allowed.forEach(key => {
+    if (postObj[key]) preppedPost[key] = postObj[key];
+  });
+
+  preppedPost.title = postObj.title.rendered;
+  preppedPost.excerpt = postObj.excerpt.raw;
+  preppedPost.content = postObj.content.raw;
+  preppedPost.meta.sub_headline = postObj.meta.sub_headline.raw;
+  preppedPost.meta.autocontent = 'true';
+  
+  return preppedPost;
+}
+
 function sendPost(api, postObj, auth = {}){
 
-  const { oauth, oauthToken } = auth;
+  return new Promise((resolve, reject) => {
 
-  let requestData = {
-    url: `${api}/wp/v2/posts`,
-    method: 'POST',
-    data: postObj,
-  }
+    const { oauth, oauthToken } = auth;
 
-  const reqOptions = {
-    url: requestData.url,
-    method: requestData.method,
-    data: requestData.data,
-    headers: oauth.toHeader(oauth.authorize(requestData, oauthToken))
-  }
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    process.env.http_proxy = 'http://localhost:8888';
+    process.env.https_proxy = 'http://localhost:8888';
 
-  console.log('req options', reqOptions);
+    let authData = {
+      url: `${api}/wp/v2/posts`,
+      method: 'POST',
+    }
 
-  request(reqOptions, (err, res, body) => {
-    console.log('body', body);
-    if(err) console.log(err)
-    if(res.statusCode == 200) { console.log(`Post ${postObj.title} was successfully sent`) } else { console.log(`Oops, that didn\'t go to plan... ${postObj.title.rendered} upload failed`) };
-  });
+    const reqOptions = {
+      url: authData.url,
+      method: authData.method,
+      body: postObj,
+      headers: oauth.toHeader(oauth.authorize(authData, oauthToken)),
+      json: true
+    }
+
+    console.log('headers', reqOptions.headers);
+
+    request(reqOptions, (err, res, body) => {
+      if(err) console.log(err);
+      console.log('response body', body);
+      resolve(res.statusCode);
+    });
   
+  });
+
 }
 
 function getReq(api, path, options = {}, accum = []){
@@ -164,58 +208,55 @@ function getReq(api, path, options = {}, accum = []){
     let optstr = '';
     optstr += '?' + querystring.stringify(options);
 
-    //console.log(`making request for ${api}${path}${optstr}`);
+    console.log(`making request for ${api}${path}${optstr}`);
 
     request(`${api}${path}${optstr}`, (err, res, body) => {
+
+      body = JSON.parse(body);
+      console.log('request body length:', body.length);
       
       if(options.count){
         
-        body = JSON.parse(body);
         accum = accum.concat(body);
 
         if(accum.length >= options.count || body.length < options.per_page){
+          console.log(`resolving with ${accum.length} items`);
           resolve(accum);
         } else {
+          console.log(`have ${accum.length} items, fetching page ${options.page + 1}`);
           getReq(api, path, Object.assign(options, {page: options.page + 1}), accum)
           .then(accum => resolve(accum));
         }
 
       } else {
-        resolve(JSON.parse(body));
+        resolve(body);
       }
     });
       
   });
 }
 
+function createOauth(target){
+
+  const oauth = Oauth({
+    consumer: {
+      key: target.clientKey,
+      secret: target.clientSecret,
+    },
+    signature_method: 'HMAC-SHA1',
+    hash_function: (baseString, key) => { return crypto.createHmac('sha1', key).update(baseString).digest('base64') },
+  });
+  
+  const oauthToken = {		
+    key: target.accessToken,		
+    secret: target.accessTokenSecret,		
+  };
+
+  return {oauth, oauthToken};
+
+}
+
 app.use(bodyParser.json()); // support json encoded bodies
-
-app.post('/createcat', (req, res) => {
-
-  let { source, target, count, section } = req.body;
-  
-    target = config[req.body.target]; // dev
-    source = config[req.body.source]; // prod
-  
-    const pkg = { name: req.body.name };
-  
-    const oauth = Oauth({
-      consumer: {
-        key: target.clientKey,
-        secret: target.clientSecret,
-      },
-      signature_method: 'HMAC-SHA1',
-      hash_function: (baseString, key) => { return crypto.createHmac('sha1', key).update(baseString).digest('base64') },
-    });
-    
-    const oauthToken = {		
-      key: target.accessToken,		
-      secret: target.accessTokenSecret,		
-    };
-
-  createCategory(target.api, pkg, {oauth, oauthToken});
-
-});
 
 app.post('/', (req, res) => {
 
@@ -232,20 +273,7 @@ app.post('/', (req, res) => {
   target = config[req.body.target]; // dev
   source = config[req.body.source]; // prod
 
-
-  const oauth = Oauth({
-    consumer: {
-      key: target.clientKey,
-      secret: target.clientSecret,
-    },
-    signature_method: 'HMAC-SHA1',
-    hash_function: (baseString, key) => { return crypto.createHmac('sha1', key).update(baseString).digest('base64') },
-  });
-  
-  const oauthToken = {		
-    key: target.accessToken,		
-    secret: target.accessTokenSecret,		
-  };
+  const { oauth, oauthToken } = createOauth(target);
 
   if(section){
     
@@ -261,18 +289,21 @@ app.post('/', (req, res) => {
     Promise.all([targetCats, sourceCats, postsArr])
     .then( ([targetCats, sourceCats, postsArr]) => {
       
+      console.log('promises resolved');
+      
       postsArr.forEach(p => {
 
         getPost(source.api, p.id)
         .then(P => {
 
+          P = prepPost(P);
           let newCatPromises = [], tCats = [];
 
           P.categories.forEach(cat => {
             let sCat = sourceCats.find(sC => { return(cat == sC.id) }) // must always succeed
             let tCat = targetCats.find(tC => { return(sCat.slug == tC.slug) }) // may fail if not present in target categories
             if(tCat){
-              tCats.push(tCat)
+              tCats.push(tCat.id)
             } else {
               newCatPromises.push(createCategory(sCat));
             }
@@ -283,8 +314,14 @@ app.post('/', (req, res) => {
             newCats.forEach(nC => tCats.push(nC.id));
 
             P.categories = tCats;
-            sendPost(target.api, P, {oauth, oauthToken});
-            console.log('Aaaaaand finally:', P.title);
+            sendPost(target.api, P, {oauth, oauthToken})
+            .then(statusCode => {
+              if(statusCode == 201) {
+                res.send(`${P.title} was sent correctly`);
+              } else {
+                res.send(`${P.title} send failed`);
+              } 
+            });
           })
 
         })
