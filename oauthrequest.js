@@ -4,7 +4,6 @@ const config = require('./config');
 
 
 function createOauth(env) {
-  console.log('createOauth env', env);
 
   const { clientKey, clientSecret, accessToken, accessTokenSecret } = config[env];
 
@@ -27,8 +26,6 @@ function createOauth(env) {
 }
 
 function oauthRequest(env, uri, payload) { // 'scotdev', '/wp/v2/*', 'objectToSend'
-
-  console.log('oauthRequest env', env);
 
   const { oauth, oauthToken } = createOauth(env);
   const { api } = config[env];  

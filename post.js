@@ -4,6 +4,8 @@ const config = require('./config');
 const getReq = require('./getreq');
 const oauthRequest = require('./oauthrequest');
 const request = require('request');
+const { getCategories, getCategoryId, getCategorySlug, createCategory } = require('./category');
+
 
 
 
@@ -59,18 +61,63 @@ function sendPost(env, payload){
     const reqOptions = oauthRequest(env, '/wp/v2/posts', payload); // 'scotdev', uri, postObj
 
     request(reqOptions, (err, res, body) => {
-      console.log('sendPost status code', res.statusCode);
       if(err) console.log(err);
-      resolve(res);
+      resolve({res, body});
     });
   
   });
 
 }
 
+function buildPostPromises(source, target, sourceCats, targetCats, postsArr) {
+  
+    let sendPostPromises = [];
+  
+    // will resolve with an array of promises to send a post to the target api
+    return new Promise((resolve, reject) => {
+  
+      postsArr.forEach(p => {
+  
+        // fetch the rich post object and map the categories to the target api
+        getPost(source, p.id)
+          .then(P => {
+  
+            P = prepPost(P);
+  
+            let newCatPromises = [], tCats = [];
+  
+            P.categories.forEach(cat => {
+              let sCat = sourceCats.find(sC => { return (cat == sC.id) }) // must always succeed
+              let tCat = targetCats.find(tC => { return (sCat.slug == tC.slug) }) // may fail if not present in target categories
+              if (tCat) {
+                tCats.push(tCat.id)
+              } else {
+                newCatPromises.push(createCategory(target, sCat));
+              }
+            });
+  
+            Promise.all(newCatPromises)
+              .then(newCats => {
+                newCats.forEach(nC => tCats.push(nC.id));
+                P.categories = tCats;
+
+                sendPostPromises.push(sendPost(target, P));
+                if(sendPostPromises.length == postsArr.length) resolve(sendPostPromises);
+              })
+  
+          })
+  
+      });
+  
+    });
+  
+  
+  }
+
 module.exports = {
   getPostsFromCat,
   getPost,
   prepPost,
-  sendPost
+  sendPost,
+  buildPostPromises
 }

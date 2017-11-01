@@ -3,11 +3,10 @@
 const config = require('./config');
 const oauthRequest = require('./oauthrequest');
 const getReq = require('./getreq');
+const request = require('request');
 
 
 function getCategories(env) {
-
-  console.log('getCategories env', env);  
 
   const { api } = config[env];
 
@@ -56,7 +55,7 @@ function createCategory(env, payload) {
 
     request(reqOptions, (err, res, body) => {
       if (err) console.log(err);
-      console.log('response body', body);
+      console.log(`creating category "${payload.slug}", statusCode ${res.statusCode}`);
       resolve(res.statusCode);
     });
 

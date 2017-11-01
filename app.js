@@ -7,95 +7,57 @@ const config = require('./config');
 
 
 const { getCategories, getCategoryId, getCategorySlug, createCategory } = require('./category');
-const { getPostsFromCat, getPost, prepPost, sendPost } = require('./post');
+const { getPostsFromCat, getPost, prepPost, sendPost, buildPostPromises } = require('./post');
+
+
 
 app.use(bodyParser.json()); // support json encoded bodies
 
 app.post('/', (req, res) => {
 
-  /* 
-    params:
-    sourceapi (string),
-    targetapi (string),
-    count (int),
-    [sectionslug] (string)
-  */
-  
   const { source, target, count, section, charles } = req.body;
 
-  if(charles){
+  // add proxying through charles
+  if (charles) {
     process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
     process.env.http_proxy = 'http://localhost:8888';
     process.env.https_proxy = 'http://localhost:8888';
   }
 
-  if(section){
-    
-    let targetCats = getCategories(target);
-    let sourceCats = getCategories(source);
-    
-    let postsArr = new Promise((resolve, reject) => {
-      getCategoryId(source, section)
+  // promises for source categories, target categories and lite array of posts from the required section
+  let sourceCats = getCategories(source);
+  let targetCats = getCategories(target);
+
+  let postsArr = new Promise((resolve, reject) => {
+    getCategoryId(source, section)
       .then(cat => { return getPostsFromCat(source, count, cat.id) })
       .then(posts => resolve(posts));
-    });
-      
-    Promise.all([targetCats, sourceCats, postsArr])
-    .then( ([targetCats, sourceCats, postsArr]) => {
+  });
 
-      let sendPostPromises = [];
-      
-      postsArr.forEach(p => {
+  Promise.all([sourceCats, targetCats, postsArr])
+    .then(([sourceCats, targetCats, postsArr]) => {
 
-        getPost(source, p.id)
-        .then(P => {
+      // fetch an array of promises to send a post to the target api
+      buildPostPromises(source, target, sourceCats, targetCats, postsArr)
+      .then(sendPostPromises => {
 
-          P = prepPost(P);
-
-          let newCatPromises = [], tCats = [];
-
-          P.categories.forEach(cat => {
-            let sCat = sourceCats.find(sC => { return(cat == sC.id) }) // must always succeed
-            let tCat = targetCats.find(tC => { return(sCat.slug == tC.slug) }) // may fail if not present in target categories
-            if(tCat){
-              tCats.push(tCat.id)
-            } else {
-              newCatPromises.push(createCategory(sCat));
+        // all the posts have been sent, send an outcome response
+        Promise.all(sendPostPromises)
+        .then(posts => {
+          let successful = 0, titles = [];
+          posts.forEach(post => {
+            if (post.res.statusCode == 201) {
+              successful++;
+              titles.push(`id: ${post.body.id}, title: ${post.body.title.rendered}`);
             }
           });
-
-          Promise.all(newCatPromises)
-          .then(newCats => {
-            newCats.forEach(nC => tCats.push(nC.id));
-            P.categories = tCats;
-            sendPostPromises.push(sendPost(target, P));
-          })
-
-        })
-
-      });
-
-      Promise.all(sendPostPromises)
-      .then(posts => {
-
-        console.log(`sent ${posts.length} posts`);
-        
-
-        let successful = 0, failed = 0;
-        posts.forEach(post => {
-          
-          if(post.statusCode == 201) {
-            successful++;
-          } else {
-            failed++;
-          } 
+          console.log('sent these', titles);
+          res.send(`${successful} posts sent`);
         });
-        res.send(`${successful} posts were posted successfully; ${failed} posts failed`);
-      });
 
+      })
+      
     });
-  }
-
 
 });
 
