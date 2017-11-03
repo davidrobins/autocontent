@@ -53,6 +53,9 @@ function createCategory(env, payload) {
 
     const reqOptions = oauthRequest(env, '/wp/v2/categories', payload); // 'scotdev', uri, postObj
 
+    payload.parent = 0;
+    delete payload.meta.section_colour;
+
     request(reqOptions, (err, res, body) => {
       if (err) console.log(err);
       console.log(`creating category "${payload.slug}", statusCode ${res.statusCode}`);

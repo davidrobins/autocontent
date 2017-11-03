@@ -58,13 +58,37 @@ function sendPost(env, payload){
   
   return new Promise((resolve, reject) => {
 
-    const reqOptions = oauthRequest(env, '/wp/v2/posts', payload); // 'scotdev', uri, postObj
+    getDuplicatePosts(env, payload.slug)
+    .then(dupes => {
+      dupes = JSON.parse(dupes);
 
-    request(reqOptions, (err, res, body) => {
-      if(err) console.log(err);
-      resolve({res, body});
-    });
+      if(dupes.length == 0){
+        const reqOptions = oauthRequest(env, '/wp/v2/posts/', payload); // 'scotdev', uri, postObj
+        request(reqOptions, (err, res, body) => {
+          if(err) console.log(err);
+          resolve({res, body});
+        });
+      } else {
+        resolve({res: {statusCode: 400}});
+      }
+    
+    })
   
+  });
+
+}
+
+function getDuplicatePosts(env, slug) {
+
+  return new Promise((resolve, reject) => {
+
+    const { api } = config[env]
+    
+    request(`${api}/wp/v2/posts?slug=${slug}`, (err, res, body) => {
+      if(err) console.log(err);
+      resolve(body);
+    });
+
   });
 
 }

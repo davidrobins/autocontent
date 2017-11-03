@@ -1,6 +1,10 @@
 "use strict";
 
 const config = {
+  local: {
+    api: 'http://localhost:8080/wp-json',
+    namespace: 'thescottishsun'
+  },
   dev: {
     api: 'https://www-dev.uat-thesun.co.uk/wp-json',
     namespace: 'thesun',

@@ -1,5 +1,6 @@
 const Oauth = require('oauth-1.0a');
 const crypto  = require('crypto');
+const base64 = require('base-64');
 const config = require('./config');
 
 
@@ -34,14 +35,16 @@ function oauthRequest(env, uri, payload) { // 'scotdev', '/wp/v2/*', 'objectToSe
     url: `${api}${uri}`,
     method: 'POST',
   }
-
+ 
   const reqOptions = {
     url: authData.url,
     method: authData.method,
     body: payload,
-    headers: oauth.toHeader(oauth.authorize(authData, oauthToken)),
+    // headers: oauth.toHeader(oauth.authorize(authData, oauthToken)),
     json: true
   }
+
+  reqOptions.headers = env == 'local' ? {'Authorization' : `Basic ${base64.encode('admin:password')}`} : oauth.toHeader(oauth.authorize(authData, oauthToken));
 
   return reqOptions;
 
