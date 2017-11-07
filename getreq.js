@@ -3,10 +3,14 @@
 const config = require('./config');
 const querystring = require('querystring');
 const request = require('request');
+const throttledRequest = require('throttled-request')(request);
+
+throttledRequest.configure({
+  requests: 3,
+  milliseconds: 1000
+});
 
 function getReq(env, path, options = {}, accum = []){
-
-  console.log('getReq env', env);  
   
   return new Promise((resolve, reject) => {
   
@@ -21,7 +25,7 @@ function getReq(env, path, options = {}, accum = []){
     let optstr = '?';
     optstr += querystring.stringify(options);
 
-    request(`${api}${path}${optstr}`, (err, res, body) => {
+    throttledRequest(`${api}${path}${optstr}`, (err, res, body) => {
 
       body = JSON.parse(body);
       

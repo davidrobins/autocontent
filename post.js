@@ -4,17 +4,21 @@ const config = require('./config');
 const getReq = require('./getreq');
 const oauthRequest = require('./oauthrequest');
 const request = require('request');
+const throttledRequest = require('throttled-request')(request);
 const { getCategories, getCategoryId, getCategorySlug, createCategory } = require('./category');
 
+throttledRequest.configure({
+  requests: 1,
+  milliseconds: 1000
+});
 
 
-
-function getPostsFromCat(env, count, catid){
+function getPostsFromCat(env, count, offset, catid){
 
   const { api, namespace } = config[env];
 
   return new Promise((resolve, reject ) => {
-    getReq(env, `/${namespace}/v1/posts/lite`, { categories: catid, count: count })
+    getReq(env, `/${namespace}/v1/posts/lite`, { categories: catid, count: count, offset: offset })
     .then(posts => { 
       console.log(`getPostsFromCat got ${posts.length} posts for catid ${catid} from api ${api}`);      
       resolve(posts);
@@ -64,7 +68,7 @@ function sendPost(env, payload){
 
       if(dupes.length == 0){
         const reqOptions = oauthRequest(env, '/wp/v2/posts/', payload); // 'scotdev', uri, postObj
-        request(reqOptions, (err, res, body) => {
+        throttledRequest(reqOptions, (err, res, body) => {
           if(err) console.log(err);
           resolve({res, body});
         });
@@ -95,7 +99,7 @@ function getDuplicatePosts(env, slug) {
 
 function buildPostPromises(source, target, sourceCats, targetCats, postsArr) {
   
-    let sendPostPromises = [];
+    let sendPostPromises = [], newCatSlugs = [];
   
     // will resolve with an array of promises to send a post to the target api
     return new Promise((resolve, reject) => {
@@ -113,9 +117,10 @@ function buildPostPromises(source, target, sourceCats, targetCats, postsArr) {
             P.categories.forEach(cat => {
               let sCat = sourceCats.find(sC => { return (cat == sC.id) }) // must always succeed
               let tCat = targetCats.find(tC => { return (sCat.slug == tC.slug) }) // may fail if not present in target categories
-              if (tCat) {
+              if (tCat || newCatSlugs.includes(sCat.slug)) {
                 tCats.push(tCat.id)
               } else {
+                newCatSlugs.push(sCat.slug)
                 newCatPromises.push(createCategory(target, sCat));
               }
             });
