@@ -4,6 +4,12 @@ const config = require('./config');
 const oauthRequest = require('./oauthrequest');
 const getReq = require('./getreq');
 const request = require('request');
+const throttledRequest = require('throttled-request')(request);
+
+throttledRequest.configure({
+  requests: 1,
+  milliseconds: 1000
+});
 
 
 function getCategories(env) {
@@ -56,7 +62,7 @@ function createCategory(env, payload) {
     payload.parent = 0;
     delete payload.meta.section_colour;
 
-    request(reqOptions, (err, res, body) => {
+    throttledRequest(reqOptions, (err, res, body) => {
       if (err) console.log(err);
       console.log(`creating category "${payload.slug}", statusCode ${res.statusCode}`);
       resolve(res.statusCode);

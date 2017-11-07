@@ -21,7 +21,7 @@ app.post('/', (req, res) => {
   const { source, target, count, offset = 0, section, charles } = req.body;
 
   if(!source || !target || !count || !section){
-    res.send('Some required params miissing');
+    res.send('Some required params missing');
   }
 
   // add proxying through charles
@@ -51,16 +51,15 @@ app.post('/', (req, res) => {
         // all the posts have been sent, send an outcome response
         Promise.all(sendPostPromises)
         .then(posts => {
-          let successful = 0, completed = [];
+          let completed = [];
           posts.forEach(post => {
             if (post.res.statusCode == 201) {
-              successful++;
               completed.push(`/${section}/${post.body.id}/${post.body.slug}`);
             }
           });
           fs.writeFile(`${section}_${new Date().getUTCMilliseconds()}.json`, JSON.stringify(completed));
-          console.log('created these', completed);
-          res.send(`${successful} posts sent`);
+          console.log(`${completed.length} posts sent`);
+          res.send(`${completed.length} posts sent`);
         });
 
       })

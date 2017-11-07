@@ -66,7 +66,7 @@ function sendPost(env, payload){
     .then(dupes => {
       dupes = JSON.parse(dupes);
 
-      if(dupes.length == 0){
+      if(dupes.length === 0){
         const reqOptions = oauthRequest(env, '/wp/v2/posts/', payload); // 'scotdev', uri, postObj
         throttledRequest(reqOptions, (err, res, body) => {
           if(err) console.log(err);
@@ -131,7 +131,7 @@ function buildPostPromises(source, target, sourceCats, targetCats, postsArr) {
                 P.categories = tCats;
 
                 sendPostPromises.push(sendPost(target, P));
-                if(sendPostPromises.length == postsArr.length) resolve(sendPostPromises);
+                if(sendPostPromises.length === postsArr.length) resolve(sendPostPromises);
               })
   
           })
